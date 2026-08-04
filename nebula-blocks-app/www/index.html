@@ -92,29 +92,105 @@
     letter-spacing: 0.3px;
   }
   #overlay button:active { transform: scale(0.97); }
-  .diffRow { display: flex; gap: 10px; margin-top: 4px; }
+  .diffRow { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; width: 100%; }
   .diffBtn {
     background: rgba(255,255,255,0.08);
     color: var(--ink);
     border: 1.5px solid rgba(255,255,255,0.18);
-    padding: 12px 18px;
+    padding: 14px 18px;
     border-radius: 14px;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 700;
     cursor: pointer;
     text-align: left;
-    min-width: 92px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
   }
-  .diffBtn span { display: block; font-weight: 400; font-size: 11px; color: var(--dim); margin-top: 3px; }
-  .diffBtn:active { transform: scale(0.97); }
+  .diffBtn .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .diffBtn .label { flex: 1; }
+  .diffBtn span.sub { display: block; font-weight: 400; font-size: 11px; color: var(--dim); margin-top: 3px; }
+  .diffBtn:active { transform: scale(0.98); }
   .diffBtn.easy { border-color: #3ddc97; }
+  .diffBtn.easy .dot { background: #3ddc97; }
   .diffBtn.normal { border-color: #ffc93d; }
+  .diffBtn.normal .dot { background: #ffc93d; }
   .diffBtn.hard { border-color: #ff6b6b; }
+  .diffBtn.hard .dot { background: #ff6b6b; }
+
+  #splash {
+    position: absolute;
+    inset: 0;
+    z-index: 8;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: linear-gradient(180deg, #1b1035, #2d1b4e);
+    border-radius: 20px;
+    opacity: 1;
+    transition: opacity 0.6s ease;
+  }
+  #splash.fade-out { opacity: 0; pointer-events: none; }
+  #splash .logoMark {
+    width: 64px; height: 64px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #ff6b6b, #ffc93d, #4d96ff, #b983ff);
+    margin-bottom: 18px;
+    animation: splashPop 0.7s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  #splash h1 {
+    color: var(--ink);
+    font-size: 26px;
+    letter-spacing: 1px;
+    margin: 0 0 6px;
+    opacity: 0;
+    animation: splashFadeUp 0.6s ease 0.25s forwards;
+  }
+  #splash p {
+    color: var(--dim);
+    font-size: 13px;
+    margin: 0;
+    opacity: 0;
+    animation: splashFadeUp 0.6s ease 0.4s forwards;
+  }
+  @keyframes splashPop {
+    0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+    100% { transform: scale(1) rotate(0deg); opacity: 1; }
+  }
+  @keyframes splashFadeUp {
+    0% { opacity: 0; transform: translateY(10px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  #muteBtn {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    z-index: 15;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: var(--ink);
+    font-size: 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #muteBtn:active { transform: scale(0.95); }
 </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="game"></canvas>
+  <button id="muteBtn">🔊</button>
+  <div id="splash">
+    <div class="logoMark"></div>
+    <h1>Nebula Blocks</h1>
+    <p>a block puzzle game</p>
+  </div>
   <div id="overlay">
     <h2 id="overlayTitle">Board Full</h2>
     <p id="finalScoreLine">Score: 0 &nbsp;·&nbsp; Best: 0</p>
@@ -143,6 +219,68 @@
   const ctx = canvas.getContext('2d');
   const overlay = document.getElementById('overlay');
   const finalScoreLine = document.getElementById('finalScoreLine');
+  const splash = document.getElementById('splash');
+  const muteBtn = document.getElementById('muteBtn');
+
+  // ---- Sound engine (synthesized, no audio files needed) ----
+  let audioCtx = null;
+  let muted = false;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { /* audio unavailable, fail silently */ }
+    } else if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+  }
+
+  function tone(freq, dur, type, startGain, delay) {
+    if (muted || !audioCtx) return;
+    const t0 = audioCtx.currentTime + (delay || 0);
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, t0);
+    gain.gain.setValueAtTime(0, t0);
+    gain.gain.linearRampToValueAtTime(startGain || 0.15, t0 + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.02);
+  }
+
+  function sndPickup() { tone(520, 0.08, 'triangle', 0.08); }
+  function sndPlace() { tone(300, 0.09, 'sine', 0.1); }
+  function sndInvalid() { tone(140, 0.12, 'square', 0.08); }
+  function sndClear(lines) {
+    const base = 440;
+    for (let i = 0; i < Math.min(lines, 4); i++) {
+      tone(base + i * 140, 0.22, 'triangle', 0.14, i * 0.05);
+    }
+    // soft noise-like burst using a fast square blip
+    tone(880, 0.06, 'square', 0.05, 0.02);
+  }
+  function sndCombo(level) {
+    for (let i = 0; i < 3; i++) {
+      tone(660 + level * 40 + i * 90, 0.14, 'sawtooth', 0.09, i * 0.04);
+    }
+  }
+  function sndBomb() {
+    tone(90, 0.4, 'sawtooth', 0.2);
+    tone(60, 0.5, 'square', 0.12, 0.03);
+  }
+  function sndGameOver() {
+    tone(300, 0.25, 'sine', 0.12);
+    tone(220, 0.3, 'sine', 0.1, 0.15);
+    tone(140, 0.4, 'sine', 0.1, 0.32);
+  }
+
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+  });
 
   // ---- Logical resolution (design coordinate system) ----
   const LW = 380, LH = 650;
@@ -211,6 +349,8 @@
   let bombCount = 0;      // earned power-ups
   let bombArmed = false;
   let popups = [];         // floating combo/score text
+  let particles = [];      // line-clear burst particles
+  let shake = { t: 0, dur: 0, mag: 0 };
   let started = false;
 
   function weightedShapePool() {
@@ -242,12 +382,38 @@
     bombCount = 0;
     bombArmed = false;
     popups = [];
+    particles = [];
+    shake = { t: 0, dur: 0, mag: 0 };
     dragging = null;
     anims = [];
     gameOver = false;
     started = true;
     overlay.classList.remove('show');
     checkGameOver();
+  }
+
+  function spawnParticles(cells, color) {
+    for (const [r, c] of cells) {
+      const cx = BOARD_X + c * CELL + CELL / 2;
+      const cy = BOARD_Y + r * CELL + CELL / 2;
+      const count = 4;
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 60 + Math.random() * 120;
+        particles.push({
+          x: cx, y: cy,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 40,
+          size: 3 + Math.random() * 4,
+          color,
+          t: 0, dur: 450 + Math.random() * 200
+        });
+      }
+    }
+  }
+
+  function triggerShake(mag, dur) {
+    shake = { t: 0, dur, mag };
   }
 
   function shapeBounds(shape) {
@@ -278,6 +444,7 @@
     if (!possible && active.length > 0) {
       gameOver = true;
       best = Math.max(best, score);
+      sndGameOver();
       setTimeout(() => showGameOverScreen(), 400);
     }
   }
@@ -288,9 +455,9 @@
     finalScoreLine.textContent = 'Choose your difficulty';
     document.getElementById('overlayButtons').innerHTML = `
       <div class="diffRow">
-        <button class="diffBtn easy" data-d="easy">Easy<span>Forgiving pieces</span></button>
-        <button class="diffBtn normal" data-d="normal">Normal<span>Balanced mix</span></button>
-        <button class="diffBtn hard" data-d="hard">Hard<span>Big, awkward pieces</span></button>
+        <button class="diffBtn easy" data-d="easy"><span class="dot"></span><span class="label">Easy<span class="sub">Forgiving pieces</span></span></button>
+        <button class="diffBtn normal" data-d="normal"><span class="dot"></span><span class="label">Normal<span class="sub">Balanced mix</span></span></button>
+        <button class="diffBtn hard" data-d="hard"><span class="dot"></span><span class="label">Hard<span class="sub">Big, awkward pieces</span></span></button>
       </div>`;
     overlay.classList.add('show');
     document.querySelectorAll('.diffBtn').forEach(btn => {
@@ -306,10 +473,10 @@
     finalScoreLine.textContent = `Score: ${score}  ·  Best: ${best}  ·  ${difficulty[0].toUpperCase()+difficulty.slice(1)}`;
     document.getElementById('overlayButtons').innerHTML = `
       <button id="restartBtn">Play Again</button>
-      <div class="diffRow" style="margin-top:12px;">
-        <button class="diffBtn easy" data-d="easy">Easy</button>
-        <button class="diffBtn normal" data-d="normal">Normal</button>
-        <button class="diffBtn hard" data-d="hard">Hard</button>
+      <div class="diffRow" style="margin-top:14px;">
+        <button class="diffBtn easy" data-d="easy"><span class="dot"></span><span class="label">Easy</span></button>
+        <button class="diffBtn normal" data-d="normal"><span class="dot"></span><span class="label">Normal</span></button>
+        <button class="diffBtn hard" data-d="hard"><span class="dot"></span><span class="label">Hard</span></button>
       </div>`;
     overlay.classList.add('show');
     document.getElementById('restartBtn').addEventListener('click', resetGame);
@@ -343,6 +510,10 @@
       fullCols.forEach(c => { for (let r = 0; r < SIZE; r++) if (!fullRows.includes(r)) cellsToFlash.push([r, c]); });
 
       anims.push({ type: 'flash', cells: cellsToFlash, t: 0, dur: 260 });
+      for (const [r, c] of cellsToFlash) {
+        spawnParticles([[r, c]], board[r][c] || '#ffffff');
+      }
+      triggerShake(linesCleared > 1 ? 5 : 2.5, 180);
 
       fullRows.forEach(r => { for (let c = 0; c < SIZE; c++) board[r][c] = null; });
       fullCols.forEach(c => { for (let r = 0; r < SIZE; r++) board[r][c] = null; });
@@ -352,6 +523,9 @@
       const multiLineMult = linesCleared > 1 ? 1.5 : 1;
       const gained = Math.round(linesCleared * SIZE * 10 * comboMult * multiLineMult);
       score += gained;
+
+      sndClear(linesCleared);
+      if (combo >= 2) sndCombo(combo);
 
       const popupX = BOARD_X + BOARD_W / 2, popupY = BOARD_Y + BOARD_W / 2;
       if (combo >= 2) {
@@ -374,9 +548,11 @@
 
   function detonateBomb(centerRow, centerCol) {
     let cleared = 0;
+    const clearedCells = [];
     for (let r = centerRow - 1; r <= centerRow + 1; r++) {
       for (let c = centerCol - 1; c <= centerCol + 1; c++) {
         if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r][c]) {
+          clearedCells.push([r, c, board[r][c]]);
           board[r][c] = null;
           cleared++;
         }
@@ -385,7 +561,10 @@
     if (cleared > 0) {
       score += cleared * 5;
       popups.push({ text: `+${cleared * 5}`, x: BOARD_X + centerCol * CELL + CELL/2, y: BOARD_Y + centerRow * CELL + CELL/2, t: 0, dur: 500, color: '#ff922b' });
+      for (const [r, c, color] of clearedCells) spawnParticles([[r, c]], color);
+      triggerShake(7, 220);
     }
+    sndBomb();
     bombCount -= 1;
     bombArmed = false;
     checkGameOver();
@@ -414,6 +593,7 @@
   }
 
   function pointerDown(evt) {
+    ensureAudio();
     if (gameOver || !started) return;
     evt.preventDefault();
     const pos = getPos(evt);
@@ -422,6 +602,7 @@
     const dx = pos.x - BOMB_ICON.x, dy = pos.y - BOMB_ICON.y;
     if (bombCount > 0 && Math.sqrt(dx*dx + dy*dy) <= BOMB_ICON.r + 4) {
       bombArmed = !bombArmed;
+      sndPickup();
       return;
     }
 
@@ -440,6 +621,7 @@
     const piece = tray[idx];
     const b = shapeBounds(piece.shape);
     dragging = { idx, piece, pointer: pos, w: b.cols * CELL, h: b.rows * CELL };
+    sndPickup();
   }
 
   function pointerMove(evt) {
@@ -456,6 +638,9 @@
     if (target && canPlace(piece.shape, target.row, target.col)) {
       tray[idx] = null;
       placePiece(piece, target.row, target.col);
+      sndPlace();
+    } else {
+      sndInvalid();
     }
     dragging = null;
   }
@@ -521,6 +706,17 @@
     ctx.fillStyle = grad;
     roundRect(0, 0, LW, LH, 20);
     ctx.fill();
+
+    // Screen shake (line clears / bombs)
+    let shakeX = 0, shakeY = 0;
+    if (shake.t < shake.dur) {
+      const p = 1 - shake.t / shake.dur;
+      shakeX = (Math.random() - 0.5) * 2 * shake.mag * p;
+      shakeY = (Math.random() - 0.5) * 2 * shake.mag * p;
+      shake.t += 16;
+    }
+    ctx.save();
+    ctx.translate(shakeX, shakeY);
 
     // Header
     ctx.fillStyle = '#e9e4ff';
@@ -657,6 +853,22 @@
       }
     }
 
+    // Line-clear burst particles
+    particles = particles.filter(p => p.t < p.dur);
+    for (const p of particles) {
+      const prog = p.t / p.dur;
+      const alpha = 1 - prog;
+      const gx = p.x + p.vx * (p.t / 1000);
+      const gy = p.y + p.vy * (p.t / 1000) + 220 * Math.pow(p.t / 1000, 2);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = p.color;
+      roundRect(gx - p.size / 2, gy - p.size / 2, p.size, p.size, 2);
+      ctx.fill();
+      ctx.restore();
+      p.t += 16;
+    }
+
     // Floating popups (combo / score / bomb earned)
     popups = popups.filter(p => p.t < p.dur);
     for (const p of popups) {
@@ -673,6 +885,7 @@
       p.t += 16;
     }
 
+    ctx.restore(); // matches the shake translate save
     requestAnimationFrame(draw);
   }
 
@@ -687,6 +900,12 @@
   showStartScreen();
   requestAnimationFrame(draw);
   window.addEventListener('orientationchange', () => setTimeout(fitCanvas, 100));
+
+  // Splash intro: show app name/logo, then fade into the difficulty screen underneath
+  setTimeout(() => {
+    splash.classList.add('fade-out');
+    setTimeout(() => { splash.style.display = 'none'; }, 650);
+  }, 1500);
 })();
 </script>
 </body>
