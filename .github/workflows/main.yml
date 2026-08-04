@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+defaults:
+  run:
+    working-directory: nebula-blocks-app
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -39,11 +43,11 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build debug APK
-        working-directory: android
+        working-directory: nebula-blocks-app/android
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: nebula-blocks-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: nebula-blocks-app/android/app/build/outputs/apk/debug/app-debug.apk
