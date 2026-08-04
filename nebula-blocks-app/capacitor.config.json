@@ -1,0 +1,9 @@
+{
+  "appId": "com.yourstudio.nebulablocks",
+  "appName": "Nebula Blocks",
+  "webDir": "www",
+  "backgroundColor": "#1b1035",
+  "android": {
+    "allowMixedContent": true
+  }
+}
