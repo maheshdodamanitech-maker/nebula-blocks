@@ -39,6 +39,29 @@ jobs:
       - name: Sync web assets into Android project
         run: npx cap sync android
 
+      - name: Configure AdMob App ID
+        run: |
+          python3 - << 'PYEOF'
+          # NOTE: This uses Google's official TEST App ID so builds are safe
+          # during development. Swap ADMOB_APP_ID below for your real AdMob
+          # App ID once your account is approved and ready for production.
+          ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+
+          strings_path = "android/app/src/main/res/values/strings.xml"
+          s = open(strings_path).read()
+          if "admob_app_id" not in s:
+              s = s.replace("</resources>", f'    <string name="admob_app_id">{ADMOB_APP_ID}</string>\n</resources>')
+              open(strings_path, "w").write(s)
+
+          manifest_path = "android/app/src/main/AndroidManifest.xml"
+          m = open(manifest_path).read()
+          if "com.google.android.gms.ads.APPLICATION_ID" not in m:
+              meta = '    <meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="@string/admob_app_id"/>\n    '
+              m = m.replace("<activity", meta + "<activity", 1)
+              open(manifest_path, "w").write(m)
+          print("AdMob config injected.")
+          PYEOF
+
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
