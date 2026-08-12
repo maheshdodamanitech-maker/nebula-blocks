@@ -361,6 +361,38 @@
     applyTheme(THEME_ORDER[(idx + 1) % THEME_ORDER.length]);
   });
 
+  // ---- AdMob (only present when running as the packaged native app, not in browser preview) ----
+  const AdMob = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null;
+  // Google's official public TEST ad unit IDs — safe to use during development,
+  // swap for your real AdMob ad unit IDs before publishing.
+  const AD_IDS = {
+    interstitial: 'ca-app-pub-3940256099942544/1033173712',
+    rewarded: 'ca-app-pub-3940256099942544/5224354917'
+  };
+  let admobReady = false;
+  if (AdMob) {
+    AdMob.initialize().then(() => { admobReady = true; }).catch(() => { admobReady = false; });
+  }
+
+  async function tryShowInterstitial() {
+    if (!AdMob || !admobReady) return;
+    try {
+      await AdMob.prepareInterstitial({ adId: AD_IDS.interstitial, isTesting: true });
+      await AdMob.showInterstitial();
+    } catch (e) { /* no fill or unavailable — fail silently, never block the player */ }
+  }
+
+  async function tryShowRewardedContinue() {
+    if (!AdMob || !admobReady) return false;
+    try {
+      await AdMob.prepareRewardVideoAd({ adId: AD_IDS.rewarded, isTesting: true });
+      const result = await AdMob.showRewardVideoAd();
+      return !!result;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // ---- Logical resolution (design coordinate system) ----
   const LW = 380, LH = 700;
 
@@ -442,6 +474,7 @@
   let shuffleCount = 0;
   let lastSnapshot = null; // single-level undo
   let hintTarget = null;   // { row, col, cells, t, dur }
+  let continuesUsedThisGame = 0;
   let popups = [];         // floating combo/score text
   let particles = [];      // line-clear burst particles
   let landPulses = [];     // squash-and-stretch bounce when a piece lands
@@ -485,6 +518,7 @@
     shuffleCount = 1;
     lastSnapshot = null;
     hintTarget = null;
+    continuesUsedThisGame = 0;
     popups = [];
     particles = [];
     landPulses = [];
@@ -571,6 +605,19 @@
     }
   }
 
+  function reviveWithAd() {
+    board = Array.from({ length: SIZE }, () => Array(SIZE).fill(null));
+    gameOver = false;
+    continuesUsedThisGame += 1;
+    overlay.classList.remove('show');
+    const cx = BOARD_X + BOARD_W / 2, cy = BOARD_Y + BOARD_W / 2;
+    popups.push({ text: 'CONTINUE!', x: cx, y: cy, t: 0, dur: 900, color: '#3ddc97', size: 26, bounce: true });
+    triggerShake(5, 200);
+    sndCombo(3);
+    vibrate([20, 30, 20]);
+    checkGameOver();
+  }
+
   function showStartScreen() {
     started = false;
     document.getElementById('overlayTitle').textContent = 'Nebula Blocks';
@@ -593,7 +640,9 @@
   function showGameOverScreen() {
     document.getElementById('overlayTitle').textContent = 'Board Full';
     finalScoreLine.textContent = `Score: ${score}  ·  Best: ${best}  ·  ${difficulty[0].toUpperCase()+difficulty.slice(1)}`;
+    const canContinue = AdMob && admobReady && continuesUsedThisGame < 1;
     document.getElementById('overlayButtons').innerHTML = `
+      ${canContinue ? '<button id="continueBtn" style="background:linear-gradient(135deg,#3ddc97,#7cf2c2); margin-bottom:10px; display:block; width:100%;">🎬 Watch Ad to Continue</button>' : ''}
       <button id="restartBtn">Play Again</button>
       <div class="diffRow" style="margin-top:14px;">
         <button class="diffBtn easy" data-d="easy"><span class="dot"></span><span class="label">Easy</span></button>
@@ -601,10 +650,29 @@
         <button class="diffBtn hard" data-d="hard"><span class="dot"></span><span class="label">Hard</span></button>
       </div>`;
     overlay.classList.add('show');
-    document.getElementById('restartBtn').addEventListener('click', resetGame);
+
+    if (canContinue) {
+      const continueBtn = document.getElementById('continueBtn');
+      continueBtn.addEventListener('click', async () => {
+        continueBtn.textContent = 'Loading ad…';
+        continueBtn.disabled = true;
+        const rewarded = await tryShowRewardedContinue();
+        if (rewarded) {
+          reviveWithAd();
+        } else {
+          continueBtn.textContent = 'Ad not available — try Play Again';
+        }
+      });
+    }
+
+    document.getElementById('restartBtn').addEventListener('click', async () => {
+      await tryShowInterstitial();
+      resetGame();
+    });
     document.querySelectorAll('.diffBtn').forEach(btn => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         difficulty = btn.dataset.d;
+        await tryShowInterstitial();
         resetGame();
       });
     });
