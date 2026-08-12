@@ -5,7 +5,8 @@
   "description": "Nebula Blocks - a block puzzle game",
   "dependencies": {
     "@capacitor/core": "^6.1.2",
-    "@capacitor/android": "^6.1.2"
+    "@capacitor/android": "^6.1.2",
+    "@capacitor-community/admob": "6"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.1.2"
