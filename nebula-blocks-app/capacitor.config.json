@@ -1,6 +1,6 @@
 {
-  "appId": "com.yourstudio.nebulablocks",
-  "appName": "Nebula Blocks",
+  "appId": "com.novaforge.blocknova",
+  "appName": "Block Nova",
   "webDir": "www",
   "backgroundColor": "#1b1035",
   "android": {
