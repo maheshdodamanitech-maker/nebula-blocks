@@ -364,12 +364,15 @@
 
   // ---- AdMob (only present when running as the packaged native app, not in browser preview) ----
   const AdMob = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.AdMob) || null;
-  // Google's official public TEST ad unit IDs — safe to use during development,
-  // swap for your real AdMob ad unit IDs before publishing.
+  // Real AdMob ad unit IDs for Block Nova. isTesting stays true for now so we
+  // request clearly-marked test ad creative during development — this avoids
+  // any risk of accidental self-clicks flagging the AdMob account. Flip to
+  // false only right before public Play Store submission.
   const AD_IDS = {
-    interstitial: 'ca-app-pub-3940256099942544/1033173712',
-    rewarded: 'ca-app-pub-3940256099942544/5224354917'
+    interstitial: 'ca-app-pub-8574992910047770/2197575424',
+    rewarded: 'ca-app-pub-8574992910047770/3939595600'
   };
+  const ADS_ARE_TESTING = true;
   let admobReady = false;
   if (AdMob) {
     AdMob.initialize().then(() => { admobReady = true; }).catch(() => { admobReady = false; });
@@ -378,7 +381,7 @@
   async function tryShowInterstitial() {
     if (!AdMob || !admobReady) return;
     try {
-      await AdMob.prepareInterstitial({ adId: AD_IDS.interstitial, isTesting: true });
+      await AdMob.prepareInterstitial({ adId: AD_IDS.interstitial, isTesting: ADS_ARE_TESTING });
       await AdMob.showInterstitial();
     } catch (e) { /* no fill or unavailable — fail silently, never block the player */ }
   }
@@ -386,7 +389,7 @@
   async function tryShowRewardedContinue() {
     if (!AdMob || !admobReady) return false;
     try {
-      await AdMob.prepareRewardVideoAd({ adId: AD_IDS.rewarded, isTesting: true });
+      await AdMob.prepareRewardVideoAd({ adId: AD_IDS.rewarded, isTesting: ADS_ARE_TESTING });
       const result = await AdMob.showRewardVideoAd();
       return !!result;
     } catch (e) {
