@@ -47,10 +47,10 @@ jobs:
       - name: Configure AdMob App ID
         run: |
           python3 - << 'PYEOF'
-          # NOTE: This uses Google's official TEST App ID so builds are safe
-          # during development. Swap ADMOB_APP_ID below for your real AdMob
-          # App ID once your account is approved and ready for production.
-          ADMOB_APP_ID = "ca-app-pub-3940256099942544~3347511713"
+          # Block Nova's real AdMob App ID. (Ad unit IDs used inside the app
+          # are still flagged as test-mode in the game code until we're
+          # ready for public release — see index.html for that toggle.)
+          ADMOB_APP_ID = "ca-app-pub-8574992910047770~4705882361"
 
           strings_path = "android/app/src/main/res/values/strings.xml"
           s = open(strings_path).read()
