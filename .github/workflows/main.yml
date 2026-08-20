@@ -38,6 +38,21 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Bump target/compile SDK version
+        run: |
+          python3 - << 'PYEOF'
+          import re
+          # Google Play now requires targeting at least API 35. Capacitor's
+          # default generated project may target an older API, so we bump
+          # it here every build regardless of what Capacitor's default is.
+          path = "android/variables.gradle"
+          content = open(path).read()
+          content = re.sub(r"compileSdkVersion\s*=\s*\d+", "compileSdkVersion = 35", content)
+          content = re.sub(r"targetSdkVersion\s*=\s*\d+", "targetSdkVersion = 35", content)
+          open(path, "w").write(content)
+          print("Target/compile SDK bumped to 35.")
+          PYEOF
+
       - name: Generate app icons from source
         run: npx capacitor-assets generate --android
 
