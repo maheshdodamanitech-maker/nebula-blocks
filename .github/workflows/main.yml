@@ -38,6 +38,25 @@ jobs:
       - name: Add Android platform
         run: npx cap add android
 
+      - name: Set unique version code
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - << 'PYEOF'
+          import re, os
+          # Play Console rejects re-uploading a build with a versionCode
+          # that's already been used. Capacitor defaults to versionCode 1
+          # every time, so we stamp each build with GitHub's own run number
+          # instead — it always increases, so this fix is permanent.
+          path = "android/app/build.gradle"
+          content = open(path).read()
+          run_number = os.environ["RUN_NUMBER"]
+          content = re.sub(r"versionCode\s+\d+", f"versionCode {run_number}", content)
+          content = re.sub(r'versionName\s+"[^"]*"', f'versionName "1.0.{run_number}"', content)
+          open(path, "w").write(content)
+          print(f"versionCode set to {run_number}, versionName set to 1.0.{run_number}")
+          PYEOF
+
       - name: Bump target/compile SDK version
         run: |
           python3 - << 'PYEOF'
